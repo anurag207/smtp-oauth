@@ -2,11 +2,18 @@
  * SMTP Server Module
  *
  * Creates and manages an SMTP server that accepts incoming email connections.
- * Currently prints received emails to console; will be extended to relay via Gmail API.
+ * Authenticates users via API key and relays emails through Gmail API.
  */
 
-import { SMTPServer, SMTPServerDataStream, SMTPServerSession } from 'smtp-server';
+import {
+  SMTPServer,
+  SMTPServerDataStream,
+  SMTPServerSession,
+  SMTPServerAuthentication,
+} from 'smtp-server';
 import { simpleParser, ParsedMail, AddressObject } from 'mailparser';
+import { getAccountByApiKey, Account } from '../db/repositories/account.repository';
+import { sendEmailViaGmail, EmailMessage, SendEmailResult } from '../gmail/client';
 
 /**
  * Configuration options for the SMTP server
@@ -14,6 +21,18 @@ import { simpleParser, ParsedMail, AddressObject } from 'mailparser';
 export interface SmtpServerConfig {
   port: number;
   host: string;
+}
+
+/**
+ * Extended SMTP session with authentication data
+ *
+ * We extend the base session to store authenticated user info
+ */
+interface AuthenticatedSession extends SMTPServerSession {
+  /** API key used for authentication (stored after successful auth) */
+  apiKey?: string;
+  /** Email address of the authenticated user */
+  userEmail?: string;
 }
 
 /**
@@ -28,32 +47,99 @@ export interface ParsedEmailData {
 }
 
 /**
+ * Authentication callback type for smtp-server
+ */
+type AuthCallback = (
+  err: Error | null,
+  response?: { user: string }
+) => void;
+
+/**
+ * Data callback type for smtp-server
+ */
+type DataCallback = (err?: Error | null) => void;
+
+/**
+ * Connect callback type for smtp-server
+ */
+type ConnectCallback = (err?: Error | null) => void;
+
+/**
  * Creates an SMTP server instance with the specified configuration
  *
- * @param config - Server configuration (port and host)
+ * @param _config - Server configuration (port and host)
  * @returns Configured SMTPServer instance
  */
 export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
   const server = new SMTPServer({
-    // Authentication is optional
-    authOptional: true,
+    // Require authentication for all connections
+    authOptional: false,
+
+    // Supported authentication methods
+    authMethods: ['PLAIN', 'LOGIN'],
 
     // Disable STARTTLS for local development (no SSL certificate needed)
     disabledCommands: ['STARTTLS'],
 
-    // Log successful authentication attempts
-    onAuth(auth, _session, callback) {
+    /**
+     * Handle authentication attempts
+     *
+     * Validates the API key against the database and stores
+     * authentication info in the session for later use.
+     */
+    onAuth(
+      auth: SMTPServerAuthentication,
+      session: AuthenticatedSession,
+      callback: AuthCallback
+    ): void {
       console.log(`[SMTP] Auth attempt - User: ${auth.username}`);
-      // Accept all auth for now; will validate against DB later
-      callback(null, { user: auth.username });
+
+      // Validate credentials
+      // username = email address
+      // password = API key (sk_xxx...)
+      const username = auth.username || '';
+      const password = auth.password || '';
+
+      if (!username || !password) {
+        console.log('[SMTP] Auth failed: Missing credentials');
+        callback(new Error('Username and password are required'));
+        return;
+      }
+
+      // Look up account by API key
+      const account: Account | null = getAccountByApiKey(password);
+
+      if (!account) {
+        console.log('[SMTP] Auth failed: Invalid API key');
+        callback(new Error('Invalid API key'));
+        return;
+      }
+
+      // Verify email matches the account
+      if (account.email.toLowerCase() !== username.toLowerCase()) {
+        console.log('[SMTP] Auth failed: Email does not match API key');
+        callback(new Error('Email does not match the API key'));
+        return;
+      }
+
+      // Store authentication info in session for use in onData
+      session.apiKey = password;
+      session.userEmail = account.email;
+
+      console.log(`[SMTP] Auth successful: ${account.email}`);
+      callback(null, { user: account.email });
     },
 
-    // Handle incoming email data
+    /**
+     * Handle incoming email data
+     *
+     * Parses the email, validates authentication, and sends via Gmail API.
+     */
     onData(
       stream: SMTPServerDataStream,
-      session: SMTPServerSession,
-      callback: (err?: Error | null) => void
-    ) {
+      session: AuthenticatedSession,
+      callback: DataCallback
+    ): void {
       handleIncomingEmail(stream, session)
         .then(() => {
           callback(); // Success - sends "250 OK" to client
@@ -64,17 +150,21 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
         });
     },
 
-    // Log client connections
+    /**
+     * Log client connections
+     */
     onConnect(
       session: SMTPServerSession,
-      callback: (err?: Error | null) => void
-    ) {
+      callback: ConnectCallback
+    ): void {
       console.log(`[SMTP] Client connected from ${session.remoteAddress}`);
       callback(); // Accept the connection
     },
 
-    // Log client disconnections
-    onClose(session: SMTPServerSession) {
+    /**
+     * Log client disconnections
+     */
+    onClose(session: SMTPServerSession): void {
       console.log(`[SMTP] Client disconnected: ${session.remoteAddress}`);
     },
   });
@@ -83,66 +173,134 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
 }
 
 /**
- * Handles an incoming email by parsing it and printing to console
+ * Handles an incoming email by parsing it and sending via Gmail API
  *
  * @param stream - The email data stream
- * @param session - The SMTP session information
+ * @param session - The authenticated SMTP session
  */
 async function handleIncomingEmail(
   stream: SMTPServerDataStream,
-  session: SMTPServerSession
+  session: AuthenticatedSession
 ): Promise<void> {
+  // Verify authentication
+  const apiKey = session.apiKey;
+  const userEmail = session.userEmail;
+
+  if (!apiKey || !userEmail) {
+    throw new Error('Not authenticated - missing API key or email');
+  }
+
   try {
     // Parse the raw email stream into structured data
     const parsed: ParsedMail = await simpleParser(stream);
 
-    // Extract email data
+    // Extract email data for display
     const emailData: ParsedEmailData = {
-      from: parsed.from?.text || 'unknown',
-      to: Array.isArray(parsed.to)
-        ? parsed.to.map((addr: AddressObject) => addr.text).join(', ')
-        : parsed.to?.text || 'unknown',
+      from: parsed.from?.text || userEmail,
+      to: extractRecipients(parsed.to),
       subject: parsed.subject || '(no subject)',
       body: parsed.text || parsed.html || '(empty body)',
       date: parsed.date,
     };
 
-    // Print email to console
-    printEmail(emailData, session);
+    // Print incoming email details
+    printIncomingEmail(emailData, session);
 
-    console.log('[SMTP] Email processed successfully');
+    // Build message for Gmail API
+    const message: EmailMessage = {
+      from: userEmail, // Always use authenticated email
+      to: emailData.to,
+      subject: emailData.subject,
+      text: parsed.text || '',
+      html: parsed.html || undefined,
+    };
+
+    // Validate we have a recipient
+    if (!message.to) {
+      throw new Error('No recipient specified');
+    }
+
+    // Send via Gmail API
+    console.log('[SMTP] Relaying email via Gmail API...');
+    const result: SendEmailResult = await sendEmailViaGmail(apiKey, message);
+
+    // Print success
+    printRelaySuccess(result);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[SMTP] Failed to parse email: ${errorMessage}`);
-    throw new Error(`Failed to process email: ${errorMessage}`);
+    console.error(`[SMTP] Failed to relay email: ${errorMessage}`);
+    throw new Error(`Failed to relay email: ${errorMessage}`);
   }
 }
 
 /**
- * Prints parsed email data to console in a formatted way
+ * Extract recipients from parsed email
+ *
+ * @param to - Parsed "to" field (can be single object or array)
+ * @returns Comma-separated list of recipients
+ */
+function extractRecipients(
+  to: AddressObject | AddressObject[] | undefined
+): string {
+  if (!to) {
+    return '';
+  }
+
+  if (Array.isArray(to)) {
+    return to.map((addr: AddressObject) => addr.text).join(', ');
+  }
+
+  return to.text || '';
+}
+
+/**
+ * Prints incoming email details to console
  *
  * @param email - The parsed email data
  * @param session - The SMTP session information
  */
-function printEmail(email: ParsedEmailData, session: SMTPServerSession): void {
+function printIncomingEmail(
+  email: ParsedEmailData,
+  session: AuthenticatedSession
+): void {
   console.log('\n╔══════════════════════════════════════════════════════════════╗');
   console.log('║                     INCOMING EMAIL                           ║');
   console.log('╠══════════════════════════════════════════════════════════════╣');
-  console.log(`║ Client:  ${session.remoteAddress}`);
-  console.log(`║ From:    ${email.from}`);
-  console.log(`║ To:      ${email.to}`);
-  console.log(`║ Subject: ${email.subject}`);
-  console.log(`║ Date:    ${email.date?.toISOString() || 'unknown'}`);
+  console.log(`║ Client:     ${session.remoteAddress}`);
+  console.log(`║ Auth User:  ${session.userEmail || 'unknown'}`);
+  console.log(`║ From:       ${email.from}`);
+  console.log(`║ To:         ${email.to}`);
+  console.log(`║ Subject:    ${email.subject}`);
+  console.log(`║ Date:       ${email.date?.toISOString() || 'unknown'}`);
   console.log('╠══════════════════════════════════════════════════════════════╣');
-  console.log('║ Body:');
+  console.log('║ Body Preview:');
   console.log('╟──────────────────────────────────────────────────────────────');
 
-  // Print body with indentation
-  const bodyLines = email.body.split('\n');
+  // Print first few lines of body
+  const bodyLines = email.body.split('\n').slice(0, 5);
   bodyLines.forEach((line) => {
-    console.log(`║ ${line}`);
+    console.log(`║ ${line.substring(0, 60)}`);
   });
 
+  if (email.body.split('\n').length > 5) {
+    console.log('║ ... (truncated)');
+  }
+
+  console.log('╚══════════════════════════════════════════════════════════════╝');
+}
+
+/**
+ * Prints relay success message
+ *
+ * @param result - The Gmail send result
+ */
+function printRelaySuccess(result: SendEmailResult): void {
+  console.log('\n╔══════════════════════════════════════════════════════════════╗');
+  console.log('║                  ✅ EMAIL RELAYED SUCCESSFULLY               ║');
+  console.log('╠══════════════════════════════════════════════════════════════╣');
+  console.log(`║ Gmail Message ID: ${result.messageId}`);
+  console.log(`║ Gmail Thread ID:  ${result.threadId}`);
+  console.log(`║ Sent From:        ${result.senderEmail}`);
   console.log('╚══════════════════════════════════════════════════════════════╝\n');
 }
 
@@ -160,6 +318,7 @@ export function startSmtpServer(
   return new Promise((resolve, reject) => {
     server.listen(config.port, config.host, () => {
       console.log(`[SMTP] Server listening on ${config.host}:${config.port}`);
+      console.log('[SMTP] Authentication required (use registered email + API key)');
       resolve();
     });
 
@@ -184,4 +343,3 @@ export function stopSmtpServer(server: SMTPServer): Promise<void> {
     });
   });
 }
-
