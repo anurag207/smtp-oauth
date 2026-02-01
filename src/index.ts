@@ -7,18 +7,13 @@
  * Flow: Email Client → SMTP → This Relay → OAuth → Gmail API → Delivered
  */
 
-import dotenv from 'dotenv';
+// Config must be imported first to validate environment variables
+import { config } from './config';
+
 import { createSmtpServer, startSmtpServer, stopSmtpServer } from './smtp/server';
 import { initializeDatabase, closeDatabase } from './db';
 import { createTables } from './db/schema';
-
-// Load environment variables from .env file
-dotenv.config();
-
-// Server configuration from environment variables
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || '2525', 10);
-const SMTP_HOST = process.env.SMTP_HOST || '0.0.0.0';
-const DATABASE_PATH = process.env.DATABASE_PATH || './data/relay.db';
+import { createOAuthServer, startOAuthServer } from './oauth/server';
 
 /**
  * Main application entry point
@@ -26,35 +21,46 @@ const DATABASE_PATH = process.env.DATABASE_PATH || './data/relay.db';
 async function main(): Promise<void> {
   console.log('╔══════════════════════════════════════════════════════════════╗');
   console.log('║           SMTP to Gmail OAuth Relay                          ║');
-  console.log('║           Version 0.2.0                                      ║');
+  console.log('║           Version 0.3.0                                      ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
   console.log('');
 
   // Initialize database
   console.log('[Server] Initializing database...');
-  initializeDatabase(DATABASE_PATH);
+  initializeDatabase(config.databasePath);
   createTables();
   console.log('');
 
-  // Create SMTP server
-  const smtpConfig = { port: SMTP_PORT, host: SMTP_HOST };
-  const smtpServer = createSmtpServer(smtpConfig);
+  // Create and start OAuth HTTP server
+  console.log('[Server] Starting OAuth server...');
+  const oauthServer = createOAuthServer();
+  await startOAuthServer(oauthServer);
 
-  // Start SMTP server
+  // Create and start SMTP server
+  console.log('[Server] Starting SMTP server...');
+  const smtpConfig = { port: config.smtpPort, host: config.smtpHost };
+  const smtpServer = createSmtpServer(smtpConfig);
   await startSmtpServer(smtpServer, smtpConfig);
 
   console.log('');
-  console.log('Server is ready to receive emails.');
-  console.log('Send a test email to see it printed in the console.');
+  console.log('╔══════════════════════════════════════════════════════════════╗');
+  console.log('║                    Server Ready                              ║');
+  console.log('╠══════════════════════════════════════════════════════════════╣');
+  console.log(`║  SMTP Server:   Port ${config.smtpPort}                                   ║`);
+  console.log(`║  OAuth Server:  http://localhost:${config.httpPort}                       ║`);
+  console.log('╠══════════════════════════════════════════════════════════════╣');
+  console.log('║  1. Register Gmail: http://localhost:3000/auth/register      ║');
+  console.log('║  2. Get API key and configure your email client              ║');
+  console.log('║  3. Send emails through the relay!                           ║');
+  console.log('╚══════════════════════════════════════════════════════════════╝');
   console.log('');
-  console.log('Test with: npx ts-node scripts/send-test.ts <to> <subject> <body>');
   console.log('Press Ctrl+C to stop the server.');
   console.log('');
 
   // Handle graceful shutdown on Ctrl+C
   process.on('SIGINT', () => {
     console.log('\n[Server] Received shutdown signal...');
-    
+
     // Stop SMTP server
     stopSmtpServer(smtpServer)
       .then(() => {
