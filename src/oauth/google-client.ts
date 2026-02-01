@@ -18,9 +18,14 @@ const oauth2Client = new OAuth2Client(
 );
 
 /**
- * Gmail API scopes required for sending emails
+ * OAuth scopes required:
+ * - gmail.send: Send emails via Gmail API
+ * - userinfo.email: Get user's email address during registration
  */
-const SCOPES = ['https://www.googleapis.com/auth/gmail.send'];
+const SCOPES = [
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/userinfo.email',
+];
 
 /**
  * Token response structure
