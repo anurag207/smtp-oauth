@@ -108,6 +108,7 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
 
       // Look up account by API key
       const account: Account | null = getAccountByApiKey(password);
+      console.log('[SMTP] Account:', account);
 
       if (!account) {
         console.log('[SMTP] Auth failed: Invalid API key');
