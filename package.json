@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^20.10.0",
     "@types/nodemailer": "^7.0.9",
@@ -36,8 +37,12 @@
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "dotenv": "^16.3.0",
+    "express": "^5.2.1",
+    "google-auth-library": "^10.5.0",
     "mailparser": "^3.9.3",
+    "nanoid": "^5.1.6",
     "nodemailer": "^7.0.13",
-    "smtp-server": "^3.18.1"
+    "smtp-server": "^3.18.1",
+    "zod": "^4.3.6"
   }
 }
