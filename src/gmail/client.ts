@@ -115,10 +115,33 @@ async function getValidAccessToken(apiKey: string): Promise<ValidAccessToken> {
 }
 
 /**
+ * Encode a string for use in email headers (RFC 2047)
+ *
+ * Non-ASCII characters (like emojis, Chinese, etc.) in email headers
+ * must be encoded using MIME encoded-word syntax.
+ *
+ * @param text - Text to encode
+ * @returns Encoded string safe for email headers
+ */
+function encodeHeaderValue(text: string): string {
+  // Check if text contains non-ASCII characters
+  const hasNonAscii = /[^\x00-\x7F]/.test(text);
+
+  if (!hasNonAscii) {
+    return text; // Plain ASCII, no encoding needed
+  }
+
+  // Encode using MIME encoded-word syntax (RFC 2047)
+  // Format: =?charset?encoding?encoded_text?=
+  const encoded = Buffer.from(text, 'utf-8').toString('base64');
+  return `=?UTF-8?B?${encoded}?=`;
+}
+
+/**
  * Build an RFC 2822 formatted email message
  *
  * Gmail API requires emails in RFC 2822 format. This function constructs
- * the raw email with proper headers.
+ * the raw email with proper headers and encoding for Unicode support.
  *
  * @param message - The email message to format
  * @returns Raw email string in RFC 2822 format
@@ -127,15 +150,17 @@ function buildRawEmail(message: EmailMessage): string {
   const headers: string[] = [
     `From: ${message.from}`,
     `To: ${message.to}`,
-    `Subject: ${message.subject}`,
+    `Subject: ${encodeHeaderValue(message.subject)}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
   ];
 
-  const body = message.text;
+  // Encode body in base64 for proper UTF-8 handling
+  const encodedBody = Buffer.from(message.text, 'utf-8').toString('base64');
 
   // RFC 2822 format: headers separated by CRLF, blank line, then body
-  return headers.join('\r\n') + '\r\n\r\n' + body;
+  return headers.join('\r\n') + '\r\n\r\n' + encodedBody;
 }
 
 /**
