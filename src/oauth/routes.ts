@@ -12,6 +12,8 @@ import {
   getAuthorizationUrl,
   exchangeCodeForTokens,
   getUserEmail,
+  GMAIL_SEND_SCOPE,
+  revokeToken,
 } from './google-client';
 import {
   createAccount,
@@ -82,6 +84,52 @@ authRoutes.get('/callback', async (req: Request, res: Response): Promise<void> =
     // Exchange code for tokens
     const tokens = await exchangeCodeForTokens(code);
 
+    // Verify that gmail.send scope was granted
+    if (!tokens.scope.includes(GMAIL_SEND_SCOPE)) {
+      console.log(`[OAuth] Missing required scope. Granted: ${tokens.scope}`);
+
+      // Revoke the token so user can re-authorize with fresh consent screen
+      await revokeToken(tokens.accessToken);
+
+      res.status(400).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Missing Permission - SMTP Gmail Relay</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+            h1 { color: #f59e0b; }
+            .warning { background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; }
+            .steps { background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0; }
+            ol { margin: 10px 0; padding-left: 20px; }
+            .btn { display: inline-block; background: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-top: 20px; margin-right: 10px; }
+            .btn:hover { background: #2563eb; }
+            .btn-secondary { background: #6b7280; }
+            .btn-secondary:hover { background: #4b5563; }
+          </style>
+        </head>
+        <body>
+          <h1>⚠️ Missing Permission</h1>
+          <div class="warning">
+            <strong>You didn't grant permission to send emails.</strong>
+            <p>The "Send email on your behalf" checkbox must be checked for this relay to work.</p>
+          </div>
+          <div class="steps">
+            <strong>To fix this:</strong>
+            <ol>
+              <li>Click "Try Again" below</li>
+              <li><strong>Make sure to check ALL permission boxes!</strong></li>
+            </ol>
+            <p><em>Note: We've automatically reset your authorization so you can try again.</em></p>
+          </div>
+          <a href="/auth/register" class="btn">Try Again</a>
+          <a href="/" class="btn btn-secondary">← Back to Home</a>
+        </body>
+        </html>
+      `);
+      return;
+    }
+
     // Get user's email
     const email = await getUserEmail(tokens.accessToken);
 
@@ -100,6 +148,8 @@ authRoutes.get('/callback', async (req: Request, res: Response): Promise<void> =
             code { background: #f3f4f6; padding: 2px 8px; border-radius: 4px; font-size: 14px; }
             .api-key { background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; word-break: break-all; }
             pre { background: #1f2937; color: #e5e7eb; padding: 15px; border-radius: 8px; overflow-x: auto; }
+            .btn { display: inline-block; background: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-top: 20px; }
+            .btn:hover { background: #2563eb; }
           </style>
         </head>
         <body>
@@ -117,6 +167,7 @@ Port:     2525
 Username: ${email}
 Password: ${existingAccount.api_key}
           </pre>
+          <a href="/" class="btn">← Back to Home</a>
         </body>
         </html>
       `);
@@ -148,6 +199,8 @@ Password: ${existingAccount.api_key}
           .api-key { background: #d1fae5; padding: 15px; border-radius: 8px; margin: 20px 0; word-break: break-all; }
           .warning { background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; }
           pre { background: #1f2937; color: #e5e7eb; padding: 15px; border-radius: 8px; overflow-x: auto; }
+          .btn { display: inline-block; background: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-top: 20px; }
+          .btn:hover { background: #2563eb; }
         </style>
       </head>
       <body>
@@ -173,6 +226,7 @@ Password: ${apiKey}
         <pre>
 npx ts-node scripts/send-test.ts recipient@example.com "Test Subject" "Test Body"
         </pre>
+        <a href="/" class="btn">← Back to Home</a>
       </body>
       </html>
     `);
@@ -189,6 +243,10 @@ npx ts-node scripts/send-test.ts recipient@example.com "Test Subject" "Test Body
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
           h1 { color: #ef4444; }
           .error { background: #fee2e2; padding: 15px; border-radius: 8px; margin: 20px 0; }
+          .btn { display: inline-block; background: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-top: 20px; margin-right: 10px; }
+          .btn:hover { background: #2563eb; }
+          .btn-secondary { background: #6b7280; }
+          .btn-secondary:hover { background: #4b5563; }
         </style>
       </head>
       <body>
@@ -196,7 +254,8 @@ npx ts-node scripts/send-test.ts recipient@example.com "Test Subject" "Test Body
         <div class="error">
           <strong>Error:</strong> ${errorMessage}
         </div>
-        <p><a href="/auth/register">Try again</a></p>
+        <a href="/auth/register" class="btn">Try Again</a>
+        <a href="/" class="btn btn-secondary">← Back to Home</a>
       </body>
       </html>
     `);
