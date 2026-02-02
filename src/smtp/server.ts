@@ -12,7 +12,7 @@ import {
   SMTPServerAuthentication,
 } from 'smtp-server';
 import { simpleParser, ParsedMail, AddressObject } from 'mailparser';
-import { getAccountByApiKey, Account } from '../db/repositories/account.repository';
+import { getAccountByApiKey, getAccountByEmail, Account } from '../db/repositories/account.repository';
 import { sendEmailViaGmail, EmailMessage, SendEmailResult } from '../gmail/client';
 
 /**
@@ -108,11 +108,19 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
 
       // Look up account by API key
       const account: Account | null = getAccountByApiKey(password);
-      console.log('[SMTP] Account:', account);
 
       if (!account) {
-        console.log('[SMTP] Auth failed: Invalid API key');
-        callback(new Error('Invalid API key'));
+        // API key not found - give a more helpful message
+        // Check if the email is registered at all
+        const accountByEmail = getAccountByEmail(username);
+
+        if (!accountByEmail) {
+          console.log('[SMTP] Auth failed: Account not registered');
+          callback(new Error('Account not registered. Please register at /auth/register'));
+        } else {
+          console.log('[SMTP] Auth failed: Invalid API key for registered account');
+          callback(new Error('Invalid API key'));
+        }
         return;
       }
 

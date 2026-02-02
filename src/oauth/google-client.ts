@@ -18,12 +18,17 @@ const oauth2Client = new OAuth2Client(
 );
 
 /**
+ * Required scope for sending emails via Gmail API
+ */
+export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+
+/**
  * OAuth scopes required:
  * - gmail.send: Send emails via Gmail API
  * - userinfo.email: Get user's email address during registration
  */
 const SCOPES = [
-  'https://www.googleapis.com/auth/gmail.send',
+  GMAIL_SEND_SCOPE,
   'https://www.googleapis.com/auth/userinfo.email',
 ];
 
@@ -34,6 +39,7 @@ export interface TokenResponse {
   accessToken: string;
   refreshToken: string;
   expiryDate: number;
+  scope: string;
 }
 
 /**
@@ -92,11 +98,13 @@ export async function exchangeCodeForTokens(
   }
 
   console.log('[OAuth] Successfully obtained tokens');
+  console.log(`[OAuth] Granted scopes: ${tokens.scope}`);
 
   return {
     accessToken: tokens.access_token,
     refreshToken: tokens.refresh_token,
     expiryDate: tokens.expiry_date || Date.now() + 3600 * 1000,
+    scope: tokens.scope || '',
   };
 }
 
@@ -172,5 +180,34 @@ export async function getUserEmail(accessToken: string): Promise<string> {
 
   console.log(`[OAuth] User email: ${userInfo.email}`);
   return userInfo.email;
+}
+
+/**
+ * Revoke an OAuth token
+ *
+ * This makes Google forget the previous authorization, allowing the user
+ * to re-authorize with a fresh consent screen. Useful when the user
+ * didn't grant all required permissions.
+ *
+ * @param accessToken - The access token to revoke
+ */
+export async function revokeToken(accessToken: string): Promise<void> {
+  console.log('[OAuth] Revoking token due to insufficient scopes');
+
+  try {
+    const response = await fetch(
+      `https://oauth2.googleapis.com/revoke?token=${accessToken}`,
+      { method: 'POST' }
+    );
+
+    if (!response.ok) {
+      console.warn('[OAuth] Token revoke request failed (may already be revoked)');
+    } else {
+      console.log('[OAuth] Token successfully revoked');
+    }
+  } catch (error) {
+    console.warn('[OAuth] Token revoke error:', error);
+    // Don't throw - revocation failure shouldn't block the user flow
+  }
 }
 
