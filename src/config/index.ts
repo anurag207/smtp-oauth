@@ -49,6 +49,13 @@ const configSchema = z.object({
 
   // Database configuration
   databasePath: z.string().default('./data/relay.db'),
+
+  // Encryption key for securing tokens at rest (32 bytes = 64 hex chars)
+  // Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  encryptionKey: z
+    .string()
+    .length(64, 'ENCRYPTION_KEY must be 64 hex characters (32 bytes)')
+    .regex(/^[a-fA-F0-9]+$/, 'ENCRYPTION_KEY must be a valid hex string'),
 });
 
 /**
@@ -68,6 +75,7 @@ function loadConfig(): Config {
     smtpHost: process.env.SMTP_HOST,
     httpPort: process.env.HTTP_PORT,
     databasePath: process.env.DATABASE_PATH,
+    encryptionKey: process.env.ENCRYPTION_KEY,
   });
 
   if (!result.success) {

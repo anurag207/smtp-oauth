@@ -7,6 +7,7 @@
 
 import { OAuth2Client } from 'google-auth-library';
 import { config } from '../config';
+import { oauthLogger } from '../utils/logger';
 
 /**
  * OAuth2 client instance configured with Google credentials
@@ -56,16 +57,18 @@ export interface RefreshedTokenResponse {
  * This URL redirects users to Google's consent screen where they
  * can authorize the app to send emails on their behalf.
  *
+ * @param action - The action type: 'register' or 'regenerate'
  * @returns Authorization URL to redirect users to
  */
-export function getAuthorizationUrl(): string {
+export function getAuthorizationUrl(action: 'register' | 'regenerate' = 'register'): string {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline', // Request refresh_token for long-term access
     scope: SCOPES,
     prompt: 'consent', // Always show consent screen to get refresh_token
+    state: action, // Pass action type to callback
   });
 
-  console.log('[OAuth] Generated authorization URL');
+  oauthLogger.debug(`Generated authorization URL for action: ${action}`);
   return url;
 }
 
@@ -82,7 +85,7 @@ export function getAuthorizationUrl(): string {
 export async function exchangeCodeForTokens(
   code: string
 ): Promise<TokenResponse> {
-  console.log('[OAuth] Exchanging authorization code for tokens');
+  oauthLogger.debug('Exchanging authorization code for tokens');
 
   const { tokens } = await oauth2Client.getToken(code);
 
@@ -97,8 +100,8 @@ export async function exchangeCodeForTokens(
     );
   }
 
-  console.log('[OAuth] Successfully obtained tokens');
-  console.log(`[OAuth] Granted scopes: ${tokens.scope}`);
+  oauthLogger.info('Successfully obtained tokens');
+  oauthLogger.debug(`Granted scopes: ${tokens.scope}`);
 
   return {
     accessToken: tokens.access_token,
@@ -120,7 +123,7 @@ export async function exchangeCodeForTokens(
 export async function refreshAccessToken(
   refreshToken: string
 ): Promise<RefreshedTokenResponse> {
-  console.log('[OAuth] Refreshing access token');
+  oauthLogger.debug('Refreshing access token');
 
   // Create a new client instance for this operation
   const client = new OAuth2Client(
@@ -137,7 +140,7 @@ export async function refreshAccessToken(
     throw new Error('Failed to refresh access token');
   }
 
-  console.log('[OAuth] Successfully refreshed access token');
+  oauthLogger.info('Successfully refreshed access token');
 
   return {
     accessToken: credentials.access_token,
@@ -152,7 +155,7 @@ export async function refreshAccessToken(
  * @returns User's Gmail address
  */
 export async function getUserEmail(accessToken: string): Promise<string> {
-  console.log('[OAuth] Fetching user email from Google');
+  oauthLogger.debug('Fetching user email from Google');
 
   // Create a client with the access token
   const client = new OAuth2Client();
@@ -178,7 +181,7 @@ export async function getUserEmail(accessToken: string): Promise<string> {
     throw new Error('No email found in user info');
   }
 
-  console.log(`[OAuth] User email: ${userInfo.email}`);
+  oauthLogger.info(`User email: ${userInfo.email}`);
   return userInfo.email;
 }
 
@@ -192,7 +195,7 @@ export async function getUserEmail(accessToken: string): Promise<string> {
  * @param accessToken - The access token to revoke
  */
 export async function revokeToken(accessToken: string): Promise<void> {
-  console.log('[OAuth] Revoking token due to insufficient scopes');
+  oauthLogger.info('Revoking token due to insufficient scopes');
 
   try {
     const response = await fetch(
@@ -201,12 +204,12 @@ export async function revokeToken(accessToken: string): Promise<void> {
     );
 
     if (!response.ok) {
-      console.warn('[OAuth] Token revoke request failed (may already be revoked)');
+      oauthLogger.warn('Token revoke request failed (may already be revoked)');
     } else {
-      console.log('[OAuth] Token successfully revoked');
+      oauthLogger.info('Token successfully revoked');
     }
   } catch (error) {
-    console.warn('[OAuth] Token revoke error:', error);
+    oauthLogger.warn('Token revoke error', { error });
     // Don't throw - revocation failure shouldn't block the user flow
   }
 }

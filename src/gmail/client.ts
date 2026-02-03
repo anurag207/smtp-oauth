@@ -8,9 +8,12 @@
 import { refreshAccessToken, RefreshedTokenResponse } from '../oauth/google-client';
 import {
   Account,
-  getAccountByApiKey,
+  getAccountByEmail,
   updateTokens,
+  getDecryptedAccessToken,
+  getDecryptedRefreshToken,
 } from '../db/repositories/account.repository';
+import { gmailLogger } from '../utils/logger';
 
 /**
  * Email message structure for sending via Gmail API
@@ -75,37 +78,46 @@ function isTokenExpired(expiryTimestamp: number | null): boolean {
  * Checks the database for a cached access token. If the token is expired
  * or missing, automatically refreshes it using the stored refresh token.
  *
- * @param apiKey - The API key used for SMTP authentication
+ * Security: Decrypts tokens from database storage before use.
+ *
+ * @param userEmail - The email address of the authenticated user
  * @returns Valid access token and associated email
- * @throws Error if API key is invalid or token refresh fails
+ * @throws Error if account not found or token refresh fails
  */
-async function getValidAccessToken(apiKey: string): Promise<ValidAccessToken> {
-  const account: Account | null = getAccountByApiKey(apiKey);
+async function getValidAccessToken(userEmail: string): Promise<ValidAccessToken> {
+  const account: Account | null = getAccountByEmail(userEmail);
 
   if (!account) {
-    throw new Error('Invalid API key - account not found');
+    throw new Error('Account not found');
   }
 
   // Check if we have a valid (non-expired) access token
   if (account.access_token && !isTokenExpired(account.token_expiry)) {
-    console.log(`[Gmail] Using cached access token for ${account.email}`);
-    return {
-      accessToken: account.access_token,
-      email: account.email,
-    };
+    // Decrypt the access token before returning
+    const decryptedAccessToken = getDecryptedAccessToken(account);
+    if (decryptedAccessToken) {
+      gmailLogger.debug(`Using cached access token for ${account.email}`);
+      return {
+        accessToken: decryptedAccessToken,
+        email: account.email,
+      };
+    }
   }
 
   // Token is expired or missing - refresh it
-  console.log(`[Gmail] Refreshing access token for ${account.email}`);
+  gmailLogger.info(`Refreshing access token for ${account.email}`);
+
+  // Decrypt refresh token before using with Google API
+  const decryptedRefreshToken = getDecryptedRefreshToken(account);
 
   const refreshed: RefreshedTokenResponse = await refreshAccessToken(
-    account.refresh_token
+    decryptedRefreshToken
   );
 
   // Convert milliseconds to seconds for database storage
   const expiryInSeconds = Math.floor(refreshed.expiryDate / 1000);
 
-  // Save the new token to database for future use
+  // Save the new token to database (repository will encrypt it)
   updateTokens(account.email, refreshed.accessToken, expiryInSeconds);
 
   return {
@@ -115,10 +127,33 @@ async function getValidAccessToken(apiKey: string): Promise<ValidAccessToken> {
 }
 
 /**
+ * Encode a string for use in email headers (RFC 2047)
+ *
+ * Non-ASCII characters (like emojis, Chinese, etc.) in email headers
+ * must be encoded using MIME encoded-word syntax.
+ *
+ * @param text - Text to encode
+ * @returns Encoded string safe for email headers
+ */
+function encodeHeaderValue(text: string): string {
+  // Check if text contains non-ASCII characters
+  const hasNonAscii = /[^\x00-\x7F]/.test(text);
+
+  if (!hasNonAscii) {
+    return text; // Plain ASCII, no encoding needed
+  }
+
+  // Encode using MIME encoded-word syntax (RFC 2047)
+  // Format: =?charset?encoding?encoded_text?=
+  const encoded = Buffer.from(text, 'utf-8').toString('base64');
+  return `=?UTF-8?B?${encoded}?=`;
+}
+
+/**
  * Build an RFC 2822 formatted email message
  *
  * Gmail API requires emails in RFC 2822 format. This function constructs
- * the raw email with proper headers.
+ * the raw email with proper headers and encoding for Unicode support.
  *
  * @param message - The email message to format
  * @returns Raw email string in RFC 2822 format
@@ -127,15 +162,17 @@ function buildRawEmail(message: EmailMessage): string {
   const headers: string[] = [
     `From: ${message.from}`,
     `To: ${message.to}`,
-    `Subject: ${message.subject}`,
+    `Subject: ${encodeHeaderValue(message.subject)}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=UTF-8',
+    'Content-Transfer-Encoding: base64',
   ];
 
-  const body = message.text;
+  // Encode body in base64 for proper UTF-8 handling
+  const encodedBody = Buffer.from(message.text, 'utf-8').toString('base64');
 
   // RFC 2822 format: headers separated by CRLF, blank line, then body
-  return headers.join('\r\n') + '\r\n\r\n' + body;
+  return headers.join('\r\n') + '\r\n\r\n' + encodedBody;
 }
 
 /**
@@ -159,22 +196,21 @@ function encodeBase64Url(str: string): string {
  * Send an email via Gmail API
  *
  * This is the main function that handles the complete email sending flow:
- * 1. Validates the API key and gets account info
- * 2. Gets or refreshes the access token
- * 3. Builds and encodes the email message
- * 4. Sends via Gmail API
+ * 1. Gets or refreshes the access token for the authenticated user
+ * 2. Builds and encodes the email message
+ * 3. Sends via Gmail API
  *
- * @param apiKey - API key for SMTP authentication (from registered account)
+ * @param userEmail - Email address of the authenticated user (from SMTP auth)
  * @param message - Email message to send
  * @returns Send result with message ID and thread ID
  * @throws Error if authentication fails or Gmail API returns an error
  */
 export async function sendEmailViaGmail(
-  apiKey: string,
+  userEmail: string,
   message: EmailMessage
 ): Promise<SendEmailResult> {
   // Step 1: Get valid access token (refreshes if needed)
-  const { accessToken, email } = await getValidAccessToken(apiKey);
+  const { accessToken, email } = await getValidAccessToken(userEmail);
 
   // Step 2: Ensure "from" matches the authenticated account
   // Gmail API will reject emails from addresses not owned by the user
@@ -182,9 +218,7 @@ export async function sendEmailViaGmail(
   const normalizedEmail = email.toLowerCase();
 
   if (!normalizedFrom.includes(normalizedEmail)) {
-    console.warn(
-      `[Gmail] Warning: Overriding sender from "${message.from}" to "${email}"`
-    );
+    gmailLogger.warn(`Overriding sender from "${message.from}" to "${email}"`);
     message.from = email;
   }
 
@@ -192,8 +226,8 @@ export async function sendEmailViaGmail(
   const rawEmail = buildRawEmail(message);
   const encodedEmail = encodeBase64Url(rawEmail);
 
-  console.log(`[Gmail] Sending email from ${email} to ${message.to}`);
-  console.log(`[Gmail] Subject: ${message.subject}`);
+  gmailLogger.info(`Sending email from ${email} to ${message.to}`);
+  gmailLogger.debug(`Subject: ${message.subject}`);
 
   // Step 4: Send via Gmail API
   const apiUrl = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
@@ -210,7 +244,7 @@ export async function sendEmailViaGmail(
   // Handle API errors
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`[Gmail] API Error: ${response.status} - ${errorText}`);
+    gmailLogger.error(`API Error: ${response.status} - ${errorText}`);
 
     // Provide helpful error messages for common issues
     if (response.status === 401) {
@@ -229,9 +263,11 @@ export async function sendEmailViaGmail(
   // Parse successful response
   const result = (await response.json()) as GmailSendResponse;
 
-  console.log(`[Gmail] ✅ Email sent successfully!`);
-  console.log(`[Gmail]    Message ID: ${result.id}`);
-  console.log(`[Gmail]    Thread ID: ${result.threadId}`);
+  gmailLogger.info('Email sent successfully!', {
+    messageId: result.id,
+    threadId: result.threadId,
+    to: message.to,
+  });
 
   return {
     messageId: result.id,

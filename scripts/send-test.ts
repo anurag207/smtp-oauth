@@ -127,7 +127,7 @@ async function sendEmail(args: SendEmailArgs): Promise<void> {
   console.log('╠══════════════════════════════════════════════════════════════╣');
   console.log(`║ SMTP Server:  ${SMTP_HOST}:${SMTP_PORT}`);
   console.log(`║ Auth User:    ${args.senderEmail}`);
-  console.log(`║ Auth Pass:    ${args.apiKey.substring(0, 10)}...`);
+  console.log(`║ Auth Pass:    sk_*** [${args.apiKey.length} chars]`);
   console.log('╠══════════════════════════════════════════════════════════════╣');
   console.log(`║ From:         ${args.senderEmail}`);
   console.log(`║ To:           ${args.recipient}`);

@@ -48,8 +48,8 @@ export function createOAuthServer(): Express {
           <strong>How it works:</strong>
           <ol>
             <li>Register your Gmail account (one-time setup)</li>
-            <li>Get an API key</li>
-            <li>Configure your email client/sequencer with SMTP settings</li>
+            <li>Get your SMTP credentials (API Key)</li>
+            <li>Configure your sequencer/email client with SMTP credentials</li>
             <li>Send emails through Gmail!</li>
           </ol>
         </div>
