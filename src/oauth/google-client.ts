@@ -8,6 +8,16 @@
 import { OAuth2Client } from 'google-auth-library';
 import { config } from '../config';
 import { oauthLogger } from '../utils/logger';
+import {
+  GMAIL_SEND_SCOPE,
+  REQUIRED_SCOPES,
+  GOOGLE_USERINFO_URL,
+  GOOGLE_REVOKE_URL,
+  GOOGLE_PERMISSIONS_URL,
+} from '../constants/google-api';
+
+// Re-export for backward compatibility
+export { GMAIL_SEND_SCOPE };
 
 /**
  * OAuth2 client instance configured with Google credentials
@@ -17,21 +27,6 @@ const oauth2Client = new OAuth2Client(
   config.googleClientSecret,
   config.googleRedirectUri
 );
-
-/**
- * Required scope for sending emails via Gmail API
- */
-export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
-
-/**
- * OAuth scopes required:
- * - gmail.send: Send emails via Gmail API
- * - userinfo.email: Get user's email address during registration
- */
-const SCOPES = [
-  GMAIL_SEND_SCOPE,
-  'https://www.googleapis.com/auth/userinfo.email',
-];
 
 /**
  * Token response structure
@@ -63,7 +58,7 @@ export interface RefreshedTokenResponse {
 export function getAuthorizationUrl(action: 'register' | 'regenerate' = 'register'): string {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline', // Request refresh_token for long-term access
-    scope: SCOPES,
+    scope: REQUIRED_SCOPES,
     prompt: 'consent', // Always show consent screen to get refresh_token
     state: action, // Pass action type to callback
   });
@@ -96,7 +91,7 @@ export async function exchangeCodeForTokens(
   if (!tokens.refresh_token) {
     throw new Error(
       'No refresh token received. User may have already authorized this app. ' +
-        'Revoke access at https://myaccount.google.com/permissions and try again.'
+        `Revoke access at ${GOOGLE_PERMISSIONS_URL} and try again.`
     );
   }
 
@@ -162,14 +157,11 @@ export async function getUserEmail(accessToken: string): Promise<string> {
   client.setCredentials({ access_token: accessToken });
 
   // Get user info
-  const response = await fetch(
-    'https://www.googleapis.com/oauth2/v2/userinfo',
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    }
-  );
+  const response = await fetch(GOOGLE_USERINFO_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
 
   if (!response.ok) {
     throw new Error(`Failed to fetch user info: ${response.statusText}`);
@@ -198,10 +190,9 @@ export async function revokeToken(accessToken: string): Promise<void> {
   oauthLogger.info('Revoking token due to insufficient scopes');
 
   try {
-    const response = await fetch(
-      `https://oauth2.googleapis.com/revoke?token=${accessToken}`,
-      { method: 'POST' }
-    );
+    const response = await fetch(`${GOOGLE_REVOKE_URL}?token=${accessToken}`, {
+      method: 'POST',
+    });
 
     if (!response.ok) {
       oauthLogger.warn('Token revoke request failed (may already be revoked)');
