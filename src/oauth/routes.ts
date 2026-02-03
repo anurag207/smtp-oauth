@@ -222,7 +222,7 @@ authRoutes.get('/callback', async (req: Request, res: Response): Promise<void> =
         </head>
         <body>
           <h1>🔄 API Key Regenerated!</h1>
-          <p>Your API key has been regenerated successfully.</p>
+          <p>Your API key/SMTP Password has been regenerated successfully.</p>
           <p><strong>Email:</strong> ${email}</p>
           <div class="danger">
             <strong>⚠️ Your old API key is now invalid!</strong>
