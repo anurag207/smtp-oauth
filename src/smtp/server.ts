@@ -12,7 +12,7 @@ import {
   SMTPServerAuthentication,
 } from 'smtp-server';
 import { simpleParser, ParsedMail, AddressObject } from 'mailparser';
-import { getAccountByApiKey, getAccountByEmail, Account } from '../db/repositories/account.repository';
+import { verifyApiKey, getAccountByEmail, Account } from '../db/repositories/account.repository';
 import { sendEmailViaGmail, EmailMessage, SendEmailResult } from '../gmail/client';
 
 /**
@@ -106,28 +106,22 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
         return;
       }
 
-      // Look up account by API key
-      const account: Account | null = getAccountByApiKey(password);
+      // Verify API key (handles both hashed and legacy plain keys)
+      // First check if the account exists
+      const accountByEmail = getAccountByEmail(username);
 
-      if (!account) {
-        // API key not found - give a more helpful message
-        // Check if the email is registered at all
-        const accountByEmail = getAccountByEmail(username);
-
-        if (!accountByEmail) {
-          console.log('[SMTP] Auth failed: Account not registered');
-          callback(new Error('Account not registered. Please register at /auth/register'));
-        } else {
-          console.log('[SMTP] Auth failed: Invalid API key for registered account');
-          callback(new Error('Invalid API key'));
-        }
+      if (!accountByEmail) {
+        console.log('[SMTP] Auth failed: Account not registered');
+        callback(new Error('Account not registered. Please register at /auth/register'));
         return;
       }
 
-      // Verify email matches the account
-      if (account.email.toLowerCase() !== username.toLowerCase()) {
-        console.log('[SMTP] Auth failed: Email does not match API key');
-        callback(new Error('Email does not match the API key'));
+      // Verify API key against the account
+      const account: Account | null = verifyApiKey(username, password);
+
+      if (!account) {
+        console.log('[SMTP] Auth failed: Invalid API key for registered account');
+        callback(new Error('Invalid API key'));
         return;
       }
 
@@ -231,7 +225,7 @@ async function handleIncomingEmail(
 
     // Send via Gmail API
     console.log('[SMTP] Relaying email via Gmail API...');
-    const result: SendEmailResult = await sendEmailViaGmail(apiKey, message);
+    const result: SendEmailResult = await sendEmailViaGmail(userEmail, message);
 
     // Print success
     printRelaySuccess(result);

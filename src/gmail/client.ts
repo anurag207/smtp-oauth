@@ -8,8 +8,10 @@
 import { refreshAccessToken, RefreshedTokenResponse } from '../oauth/google-client';
 import {
   Account,
-  getAccountByApiKey,
+  getAccountByEmail,
   updateTokens,
+  getDecryptedAccessToken,
+  getDecryptedRefreshToken,
 } from '../db/repositories/account.repository';
 
 /**
@@ -75,37 +77,46 @@ function isTokenExpired(expiryTimestamp: number | null): boolean {
  * Checks the database for a cached access token. If the token is expired
  * or missing, automatically refreshes it using the stored refresh token.
  *
- * @param apiKey - The API key used for SMTP authentication
+ * Security: Decrypts tokens from database storage before use.
+ *
+ * @param userEmail - The email address of the authenticated user
  * @returns Valid access token and associated email
- * @throws Error if API key is invalid or token refresh fails
+ * @throws Error if account not found or token refresh fails
  */
-async function getValidAccessToken(apiKey: string): Promise<ValidAccessToken> {
-  const account: Account | null = getAccountByApiKey(apiKey);
+async function getValidAccessToken(userEmail: string): Promise<ValidAccessToken> {
+  const account: Account | null = getAccountByEmail(userEmail);
 
   if (!account) {
-    throw new Error('Invalid API key - account not found');
+    throw new Error('Account not found');
   }
 
   // Check if we have a valid (non-expired) access token
   if (account.access_token && !isTokenExpired(account.token_expiry)) {
-    console.log(`[Gmail] Using cached access token for ${account.email}`);
-    return {
-      accessToken: account.access_token,
-      email: account.email,
-    };
+    // Decrypt the access token before returning
+    const decryptedAccessToken = getDecryptedAccessToken(account);
+    if (decryptedAccessToken) {
+      console.log(`[Gmail] Using cached access token for ${account.email}`);
+      return {
+        accessToken: decryptedAccessToken,
+        email: account.email,
+      };
+    }
   }
 
   // Token is expired or missing - refresh it
   console.log(`[Gmail] Refreshing access token for ${account.email}`);
 
+  // Decrypt refresh token before using with Google API
+  const decryptedRefreshToken = getDecryptedRefreshToken(account);
+
   const refreshed: RefreshedTokenResponse = await refreshAccessToken(
-    account.refresh_token
+    decryptedRefreshToken
   );
 
   // Convert milliseconds to seconds for database storage
   const expiryInSeconds = Math.floor(refreshed.expiryDate / 1000);
 
-  // Save the new token to database for future use
+  // Save the new token to database (repository will encrypt it)
   updateTokens(account.email, refreshed.accessToken, expiryInSeconds);
 
   return {
@@ -184,22 +195,21 @@ function encodeBase64Url(str: string): string {
  * Send an email via Gmail API
  *
  * This is the main function that handles the complete email sending flow:
- * 1. Validates the API key and gets account info
- * 2. Gets or refreshes the access token
- * 3. Builds and encodes the email message
- * 4. Sends via Gmail API
+ * 1. Gets or refreshes the access token for the authenticated user
+ * 2. Builds and encodes the email message
+ * 3. Sends via Gmail API
  *
- * @param apiKey - API key for SMTP authentication (from registered account)
+ * @param userEmail - Email address of the authenticated user (from SMTP auth)
  * @param message - Email message to send
  * @returns Send result with message ID and thread ID
  * @throws Error if authentication fails or Gmail API returns an error
  */
 export async function sendEmailViaGmail(
-  apiKey: string,
+  userEmail: string,
   message: EmailMessage
 ): Promise<SendEmailResult> {
   // Step 1: Get valid access token (refreshes if needed)
-  const { accessToken, email } = await getValidAccessToken(apiKey);
+  const { accessToken, email } = await getValidAccessToken(userEmail);
 
   // Step 2: Ensure "from" matches the authenticated account
   // Gmail API will reject emails from addresses not owned by the user
