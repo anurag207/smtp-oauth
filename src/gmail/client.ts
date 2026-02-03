@@ -14,6 +14,7 @@ import {
   getDecryptedRefreshToken,
 } from '../db/repositories/account.repository';
 import { gmailLogger } from '../utils/logger';
+import { GMAIL_SEND_API_URL } from '../constants/google-api';
 
 /**
  * Email message structure for sending via Gmail API
@@ -230,9 +231,7 @@ export async function sendEmailViaGmail(
   gmailLogger.debug(`Subject: ${message.subject}`);
 
   // Step 4: Send via Gmail API
-  const apiUrl = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
-
-  const response = await fetch(apiUrl, {
+  const response = await fetch(GMAIL_SEND_API_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
