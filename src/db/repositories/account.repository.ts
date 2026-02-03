@@ -12,6 +12,7 @@
 import { getDatabase } from '../index';
 import bcrypt from 'bcrypt';
 import { encrypt, decrypt, isEncrypted } from '../../utils/crypto';
+import { dbLogger } from '../../utils/logger';
 
 const BCRYPT_ROUNDS = 10;
 
@@ -67,7 +68,7 @@ export function createAccount(data: CreateAccountData): Account {
     apiKey: hashedApiKey,
   });
 
-  console.log(`[DB] Created account for: ${data.email} (API key hashed, tokens encrypted)`);
+  dbLogger.info(`Created account: ${data.email} (API key hashed, tokens encrypted)`);
 
   const account = getAccountById(result.lastInsertRowid as number);
   if (!account) {
@@ -217,7 +218,7 @@ export function updateTokens(
     throw new Error(`Account not found: ${email}`);
   }
 
-  console.log(`[DB] Updated tokens for: ${email}`);
+  dbLogger.debug(`Updated tokens for: ${email}`);
 }
 
 /**
@@ -249,7 +250,7 @@ export function updateRefreshToken(
     throw new Error(`Account not found: ${email}`);
   }
 
-  console.log(`[DB] Updated refresh token for: ${email}`);
+  dbLogger.debug(`Updated refresh token for: ${email}`);
 }
 
 /**
@@ -265,7 +266,7 @@ export function deleteAccount(email: string): boolean {
   const result = stmt.run(email);
 
   if (result.changes > 0) {
-    console.log(`[DB] Deleted account: ${email}`);
+    dbLogger.info(`Deleted account: ${email}`);
     return true;
   }
 

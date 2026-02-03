@@ -8,6 +8,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { dbLogger } from '../utils/logger';
 
 // Module-level database instance
 let db: Database.Database | null = null;
@@ -23,7 +24,7 @@ export function initializeDatabase(dbPath: string): Database.Database {
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
-    console.log(`[DB] Created directory: ${dir}`);
+    dbLogger.debug(`Created directory: ${dir}`);
   }
 
   // Create database connection
@@ -35,7 +36,7 @@ export function initializeDatabase(dbPath: string): Database.Database {
   // Enable foreign key constraints for data integrity
   db.pragma('foreign_keys = ON');
 
-  console.log(`[DB] Connected to database: ${dbPath}`);
+  dbLogger.info(`Connected to database: ${dbPath}`);
 
   return db;
 }
@@ -62,7 +63,7 @@ export function closeDatabase(): void {
   if (db) {
     db.close();
     db = null;
-    console.log('[DB] Database connection closed');
+    dbLogger.info('Database connection closed');
   }
 }
 

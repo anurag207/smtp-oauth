@@ -19,6 +19,7 @@ import {
   createAccount,
   getAccountByEmail,
 } from '../db/repositories/account.repository';
+import { oauthLogger } from '../utils/logger';
 
 /**
  * OAuth router instance
@@ -32,11 +33,11 @@ export const authRoutes = Router();
  */
 authRoutes.get('/register', (_req: Request, res: Response): void => {
   try {
-    console.log('[OAuth] Starting registration flow');
+    oauthLogger.info('Starting registration flow');
     const authUrl = getAuthorizationUrl();
     res.redirect(authUrl);
   } catch (error) {
-    console.error('[OAuth] Error starting registration:', error);
+    oauthLogger.error('Error starting registration', { error });
     res.status(500).send(`
       <h1>❌ Error</h1>
       <p>Failed to start OAuth flow. Please check server logs.</p>
@@ -57,7 +58,7 @@ authRoutes.get('/callback', async (req: Request, res: Response): Promise<void> =
 
   // Handle user cancellation or errors
   if (error) {
-    console.log(`[OAuth] User cancelled or error: ${error}`);
+    oauthLogger.warn(`User cancelled or error: ${error}`);
     res.status(400).send(`
       <h1>❌ Authorization Cancelled</h1>
       <p>You cancelled the authorization or an error occurred.</p>
@@ -69,7 +70,7 @@ authRoutes.get('/callback', async (req: Request, res: Response): Promise<void> =
 
   // Validate authorization code
   if (!code) {
-    console.error('[OAuth] No authorization code received');
+    oauthLogger.error('No authorization code received');
     res.status(400).send(`
       <h1>❌ Error</h1>
       <p>No authorization code received from Google.</p>
@@ -79,14 +80,14 @@ authRoutes.get('/callback', async (req: Request, res: Response): Promise<void> =
   }
 
   try {
-    console.log('[OAuth] Processing callback');
+    oauthLogger.info('Processing callback');
 
     // Exchange code for tokens
     const tokens = await exchangeCodeForTokens(code);
 
     // Verify that gmail.send scope was granted
     if (!tokens.scope.includes(GMAIL_SEND_SCOPE)) {
-      console.log(`[OAuth] Missing required scope. Granted: ${tokens.scope}`);
+      oauthLogger.warn(`Missing required scope. Granted: ${tokens.scope}`);
 
       // Revoke the token so user can re-authorize with fresh consent screen
       await revokeToken(tokens.accessToken);
@@ -136,7 +137,7 @@ authRoutes.get('/callback', async (req: Request, res: Response): Promise<void> =
     // Check if account already exists
     const existingAccount = getAccountByEmail(email);
     if (existingAccount) {
-      console.log(`[OAuth] Account already exists: ${email}`);
+      oauthLogger.info(`Account already exists: ${email}`);
       res.send(`
         <!DOCTYPE html>
         <html>
@@ -184,7 +185,7 @@ Password: ${existingAccount.api_key}
       apiKey,
     });
 
-    console.log(`[OAuth] Successfully registered: ${email}`);
+    oauthLogger.info(`Successfully registered: ${email}`);
 
     // Show success page with API key
     res.send(`
@@ -232,7 +233,7 @@ npx ts-node scripts/send-test.ts recipient@example.com "Test Subject" "Test Body
     `);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[OAuth] Callback error:', errorMessage);
+    oauthLogger.error(`Callback error: ${errorMessage}`);
 
     res.status(500).send(`
       <!DOCTYPE html>

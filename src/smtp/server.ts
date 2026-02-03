@@ -14,6 +14,7 @@ import {
 import { simpleParser, ParsedMail, AddressObject } from 'mailparser';
 import { verifyApiKey, getAccountByEmail, Account } from '../db/repositories/account.repository';
 import { sendEmailViaGmail, EmailMessage, SendEmailResult } from '../gmail/client';
+import { smtpLogger } from '../utils/logger';
 
 /**
  * Configuration options for the SMTP server
@@ -92,7 +93,7 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
       session: AuthenticatedSession,
       callback: AuthCallback
     ): void {
-      console.log(`[SMTP] Auth attempt - User: ${auth.username}`);
+      smtpLogger.info(`Auth attempt - User: ${auth.username}`);
 
       // Validate credentials
       // username = email address
@@ -101,7 +102,7 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
       const password = auth.password || '';
 
       if (!username || !password) {
-        console.log('[SMTP] Auth failed: Missing credentials');
+        smtpLogger.warn('Auth failed: Missing credentials');
         callback(new Error('Username and password are required'));
         return;
       }
@@ -111,7 +112,7 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
       const accountByEmail = getAccountByEmail(username);
 
       if (!accountByEmail) {
-        console.log('[SMTP] Auth failed: Account not registered');
+        smtpLogger.warn(`Auth failed: Account not registered - ${username}`);
         callback(new Error('Account not registered. Please register at /auth/register'));
         return;
       }
@@ -120,7 +121,7 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
       const account: Account | null = verifyApiKey(username, password);
 
       if (!account) {
-        console.log('[SMTP] Auth failed: Invalid API key for registered account');
+        smtpLogger.warn(`Auth failed: Invalid API key for ${username}`);
         callback(new Error('Invalid API key'));
         return;
       }
@@ -129,7 +130,7 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
       session.apiKey = password;
       session.userEmail = account.email;
 
-      console.log(`[SMTP] Auth successful: ${account.email}`);
+      smtpLogger.info(`Auth successful: ${account.email}`);
       callback(null, { user: account.email });
     },
 
@@ -148,7 +149,7 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
           callback(); // Success - sends "250 OK" to client
         })
         .catch((err: Error) => {
-          console.error('[SMTP] Error processing email:', err.message);
+          smtpLogger.error(`Error processing email: ${err.message}`);
           callback(err); // Failure - sends error to client
         });
     },
@@ -160,7 +161,7 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
       session: SMTPServerSession,
       callback: ConnectCallback
     ): void {
-      console.log(`[SMTP] Client connected from ${session.remoteAddress}`);
+      smtpLogger.info(`Client connected from ${session.remoteAddress}`);
       callback(); // Accept the connection
     },
 
@@ -168,7 +169,7 @@ export function createSmtpServer(_config: SmtpServerConfig): SMTPServer {
      * Log client disconnections
      */
     onClose(session: SMTPServerSession): void {
-      console.log(`[SMTP] Client disconnected: ${session.remoteAddress}`);
+      smtpLogger.debug(`Client disconnected: ${session.remoteAddress}`);
     },
   });
 
@@ -224,14 +225,14 @@ async function handleIncomingEmail(
     }
 
     // Send via Gmail API
-    console.log('[SMTP] Relaying email via Gmail API...');
+    smtpLogger.info('Relaying email via Gmail API...');
     const result: SendEmailResult = await sendEmailViaGmail(userEmail, message);
 
     // Print success
     printRelaySuccess(result);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[SMTP] Failed to relay email: ${errorMessage}`);
+    smtpLogger.error(`Failed to relay email: ${errorMessage}`);
     throw new Error(`Failed to relay email: ${errorMessage}`);
   }
 }
@@ -266,6 +267,17 @@ function printIncomingEmail(
   email: ParsedEmailData,
   session: AuthenticatedSession
 ): void {
+  // Log structured data for file logs
+  smtpLogger.info('Incoming email received', {
+    client: session.remoteAddress,
+    authUser: session.userEmail,
+    from: email.from,
+    to: email.to,
+    subject: email.subject,
+    date: email.date?.toISOString(),
+  });
+
+  // Pretty console output
   console.log('\n╔══════════════════════════════════════════════════════════════╗');
   console.log('║                     INCOMING EMAIL                           ║');
   console.log('╠══════════════════════════════════════════════════════════════╣');
@@ -298,6 +310,14 @@ function printIncomingEmail(
  * @param result - The Gmail send result
  */
 function printRelaySuccess(result: SendEmailResult): void {
+  // Log structured data for file logs
+  smtpLogger.info('Email relayed successfully', {
+    messageId: result.messageId,
+    threadId: result.threadId,
+    sender: result.senderEmail,
+  });
+
+  // Pretty console output
   console.log('\n╔══════════════════════════════════════════════════════════════╗');
   console.log('║                  ✅ EMAIL RELAYED SUCCESSFULLY               ║');
   console.log('╠══════════════════════════════════════════════════════════════╣');
@@ -320,13 +340,13 @@ export function startSmtpServer(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     server.listen(config.port, config.host, () => {
-      console.log(`[SMTP] Server listening on ${config.host}:${config.port}`);
-      console.log('[SMTP] Authentication required (use registered email + API key)');
+      smtpLogger.info(`Server listening on ${config.host}:${config.port}`);
+      smtpLogger.info('Authentication required (use registered email + API key)');
       resolve();
     });
 
     server.on('error', (err: Error) => {
-      console.error('[SMTP] Server error:', err.message);
+      smtpLogger.error(`Server error: ${err.message}`);
       reject(err);
     });
   });
@@ -341,7 +361,7 @@ export function startSmtpServer(
 export function stopSmtpServer(server: SMTPServer): Promise<void> {
   return new Promise((resolve) => {
     server.close(() => {
-      console.log('[SMTP] Server stopped');
+      smtpLogger.info('Server stopped');
       resolve();
     });
   });

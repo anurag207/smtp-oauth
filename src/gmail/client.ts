@@ -13,6 +13,7 @@ import {
   getDecryptedAccessToken,
   getDecryptedRefreshToken,
 } from '../db/repositories/account.repository';
+import { gmailLogger } from '../utils/logger';
 
 /**
  * Email message structure for sending via Gmail API
@@ -95,7 +96,7 @@ async function getValidAccessToken(userEmail: string): Promise<ValidAccessToken>
     // Decrypt the access token before returning
     const decryptedAccessToken = getDecryptedAccessToken(account);
     if (decryptedAccessToken) {
-      console.log(`[Gmail] Using cached access token for ${account.email}`);
+      gmailLogger.debug(`Using cached access token for ${account.email}`);
       return {
         accessToken: decryptedAccessToken,
         email: account.email,
@@ -104,7 +105,7 @@ async function getValidAccessToken(userEmail: string): Promise<ValidAccessToken>
   }
 
   // Token is expired or missing - refresh it
-  console.log(`[Gmail] Refreshing access token for ${account.email}`);
+  gmailLogger.info(`Refreshing access token for ${account.email}`);
 
   // Decrypt refresh token before using with Google API
   const decryptedRefreshToken = getDecryptedRefreshToken(account);
@@ -217,9 +218,7 @@ export async function sendEmailViaGmail(
   const normalizedEmail = email.toLowerCase();
 
   if (!normalizedFrom.includes(normalizedEmail)) {
-    console.warn(
-      `[Gmail] Warning: Overriding sender from "${message.from}" to "${email}"`
-    );
+    gmailLogger.warn(`Overriding sender from "${message.from}" to "${email}"`);
     message.from = email;
   }
 
@@ -227,8 +226,8 @@ export async function sendEmailViaGmail(
   const rawEmail = buildRawEmail(message);
   const encodedEmail = encodeBase64Url(rawEmail);
 
-  console.log(`[Gmail] Sending email from ${email} to ${message.to}`);
-  console.log(`[Gmail] Subject: ${message.subject}`);
+  gmailLogger.info(`Sending email from ${email} to ${message.to}`);
+  gmailLogger.debug(`Subject: ${message.subject}`);
 
   // Step 4: Send via Gmail API
   const apiUrl = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
@@ -245,7 +244,7 @@ export async function sendEmailViaGmail(
   // Handle API errors
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`[Gmail] API Error: ${response.status} - ${errorText}`);
+    gmailLogger.error(`API Error: ${response.status} - ${errorText}`);
 
     // Provide helpful error messages for common issues
     if (response.status === 401) {
@@ -264,9 +263,11 @@ export async function sendEmailViaGmail(
   // Parse successful response
   const result = (await response.json()) as GmailSendResponse;
 
-  console.log(`[Gmail] ✅ Email sent successfully!`);
-  console.log(`[Gmail]    Message ID: ${result.id}`);
-  console.log(`[Gmail]    Thread ID: ${result.threadId}`);
+  gmailLogger.info('Email sent successfully!', {
+    messageId: result.id,
+    threadId: result.threadId,
+    to: message.to,
+  });
 
   return {
     messageId: result.id,
