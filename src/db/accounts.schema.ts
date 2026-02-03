@@ -1,8 +1,8 @@
 /**
- * Database Schema Module
+ * Accounts Database Schema
  *
- * Creates and manages database tables.
- * Tables are created if they don't exist 
+ * Defines and creates the accounts table for storing OAuth credentials.
+ * Tables are created if they don't exist.
  */
 
 import { getDatabase } from './index';

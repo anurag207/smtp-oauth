@@ -5,11 +5,11 @@
  * Handles automatic token refresh when access tokens expire.
  */
 
-import { refreshAccessToken, RefreshedTokenResponse } from '../oauth/google-client';
+import { refreshAccessToken, RefreshedTokenResponse } from '../oauth/client';
 import {
   Account,
   getAccountByEmail,
-  updateTokens,
+  updateAccessToken,
   getDecryptedAccessToken,
   getDecryptedRefreshToken,
 } from '../db/repositories/account.repository';
@@ -119,7 +119,7 @@ async function getValidAccessToken(userEmail: string): Promise<ValidAccessToken>
   const expiryInSeconds = Math.floor(refreshed.expiryDate / 1000);
 
   // Save the new token to database (repository will encrypt it)
-  updateTokens(account.email, refreshed.accessToken, expiryInSeconds);
+  updateAccessToken(account.email, refreshed.accessToken, expiryInSeconds);
 
   return {
     accessToken: refreshed.accessToken,

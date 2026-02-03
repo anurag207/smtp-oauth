@@ -14,7 +14,7 @@ import {
   getUserEmail,
   GMAIL_SEND_SCOPE,
   revokeToken,
-} from './google-client';
+} from './client';
 import {
   createAccount,
   getAccountByEmail,

@@ -12,8 +12,8 @@ import { config } from './config';
 
 import { createSmtpServer, startSmtpServer, stopSmtpServer } from './smtp/server';
 import { initializeDatabase, closeDatabase } from './db';
-import { createTables } from './db/schema';
-import { createOAuthServer, startOAuthServer } from './oauth/server';
+import { createTables } from './db/accounts.schema';
+import { createOAuthServer, startOAuthServer } from './oauth/http-server';
 import { serverLogger } from './utils/logger';
 
 /**

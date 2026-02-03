@@ -6,12 +6,12 @@
  */
 
 import { initializeDatabase, closeDatabase } from '../src/db';
-import { createTables } from '../src/db/schema';
+import { createTables } from '../src/db/accounts.schema';
 import {
   createAccount,
   getAccountByEmail,
   getAccountByApiKey,
-  updateTokens,
+  updateAccessToken,
   deleteAccount,
   getAllAccounts,
   countAccounts,
@@ -75,11 +75,11 @@ async function runTests(): Promise<void> {
   }
 
   // Test: Update tokens
-  console.log('5. Testing updateTokens()...');
+  console.log('5. Testing updateAccessToken()...');
   const newAccessToken = 'new_access_token_xyz';
   const newExpiry = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
   try {
-    updateTokens(testEmail, newAccessToken, newExpiry);
+    updateAccessToken(testEmail, newAccessToken, newExpiry);
     const updated = getAccountByEmail(testEmail);
     if (updated?.access_token === newAccessToken) {
       console.log(`   ✅ Tokens updated successfully`);

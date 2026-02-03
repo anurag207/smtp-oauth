@@ -1,5 +1,5 @@
 /**
- * Google OAuth Client
+ * OAuth Client
  *
  * Handles OAuth 2.0 authentication with Google for Gmail API access.
  * Provides functions to generate auth URLs, exchange codes, and refresh tokens.
