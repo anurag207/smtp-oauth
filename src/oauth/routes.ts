@@ -18,6 +18,7 @@ import {
 import {
   createAccount,
   getAccountByEmail,
+  updateApiKey,
 } from '../db/repositories/account.repository';
 import { oauthLogger } from '../utils/logger';
 
@@ -34,7 +35,7 @@ export const authRoutes = Router();
 authRoutes.get('/register', (_req: Request, res: Response): void => {
   try {
     oauthLogger.info('Starting registration flow');
-    const authUrl = getAuthorizationUrl();
+    const authUrl = getAuthorizationUrl('register');
     res.redirect(authUrl);
   } catch (error) {
     oauthLogger.error('Error starting registration', { error });
@@ -42,6 +43,27 @@ authRoutes.get('/register', (_req: Request, res: Response): void => {
       <h1>❌ Error</h1>
       <p>Failed to start OAuth flow. Please check server logs.</p>
       <p><a href="/auth/register">Try again</a></p>
+    `);
+  }
+});
+
+/**
+ * GET /auth/regenerate
+ *
+ * Starts the OAuth flow for API key regeneration.
+ * User must re-authenticate to prove they own the account.
+ */
+authRoutes.get('/regenerate', (_req: Request, res: Response): void => {
+  try {
+    oauthLogger.info('Starting API key regeneration flow');
+    const authUrl = getAuthorizationUrl('regenerate');
+    res.redirect(authUrl);
+  } catch (error) {
+    oauthLogger.error('Error starting regeneration', { error });
+    res.status(500).send(`
+      <h1>❌ Error</h1>
+      <p>Failed to start regeneration flow. Please check server logs.</p>
+      <p><a href="/auth/regenerate">Try again</a></p>
     `);
   }
 });
@@ -55,6 +77,8 @@ authRoutes.get('/register', (_req: Request, res: Response): void => {
 authRoutes.get('/callback', async (req: Request, res: Response): Promise<void> => {
   const code = req.query.code as string | undefined;
   const error = req.query.error as string | undefined;
+  const state = req.query.state as string | undefined;
+  const isRegenerate = state === 'regenerate';
 
   // Handle user cancellation or errors
   if (error) {
@@ -136,6 +160,96 @@ authRoutes.get('/callback', async (req: Request, res: Response): Promise<void> =
 
     // Check if account already exists
     const existingAccount = getAccountByEmail(email);
+    
+    // Handle regeneration request for non-existent account
+    if (!existingAccount && isRegenerate) {
+      oauthLogger.warn(`Regeneration attempted for non-existent account: ${email}`);
+      res.status(400).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Account Not Found - SMTP Gmail Relay</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+            h1 { color: #ef4444; }
+            .error { background: #fee2e2; padding: 15px; border-radius: 8px; margin: 20px 0; }
+            .btn { display: inline-block; background: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-top: 20px; margin-right: 10px; }
+            .btn:hover { background: #2563eb; }
+          </style>
+        </head>
+        <body>
+          <h1>❌ Account Not Found</h1>
+          <div class="error">
+            <p>Cannot regenerate API key - this email is not registered.</p>
+            <p><strong>Email:</strong> ${email}</p>
+          </div>
+          <p>Please register first to get an API key.</p>
+          <a href="/auth/register" class="btn">Register Now</a>
+          <a href="/" class="btn">← Back to Home</a>
+        </body>
+        </html>
+      `);
+      return;
+    }
+    
+    // Handle regeneration request
+    if (existingAccount && isRegenerate) {
+      oauthLogger.info(`Regenerating API key for: ${email}`);
+      
+      // Generate a new API key
+      const newApiKey = 'sk_' + nanoid(32);
+      
+      // Update the API key in database (will be hashed)
+      updateApiKey(email, newApiKey);
+      
+      // Show the new API key
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>API Key Regenerated - SMTP Gmail Relay</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+            h1 { color: #10b981; }
+            code { background: #f3f4f6; padding: 2px 8px; border-radius: 4px; font-size: 14px; }
+            .api-key { background: #d1fae5; padding: 15px; border-radius: 8px; margin: 20px 0; word-break: break-all; }
+            .warning { background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; }
+            .danger { background: #fee2e2; padding: 15px; border-radius: 8px; margin: 20px 0; }
+            pre { background: #1f2937; color: #e5e7eb; padding: 15px; border-radius: 8px; overflow-x: auto; }
+            .btn { display: inline-block; background: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-top: 20px; }
+            .btn:hover { background: #2563eb; }
+          </style>
+        </head>
+        <body>
+          <h1>🔄 API Key Regenerated!</h1>
+          <p>Your API key has been regenerated successfully.</p>
+          <p><strong>Email:</strong> ${email}</p>
+          <div class="danger">
+            <strong>⚠️ Your old API key is now invalid!</strong>
+            <p>Update your SMTP configuration with the new key below.</p>
+          </div>
+          <div class="api-key">
+            <strong>Your New SMTP Password (API Key):</strong><br>
+            <code>${newApiKey}</code>
+          </div>
+          <div class="warning">
+            <strong>⚠️ Important:</strong> Save this API key now! It won't be shown again.
+          </div>
+          <h2>SMTP Configuration</h2>
+          <pre>
+Host:     localhost (or your server IP)
+Port:     2525
+Username: ${email}
+Password: ${newApiKey}
+          </pre>
+          <a href="/" class="btn">← Back to Home</a>
+        </body>
+        </html>
+      `);
+      return;
+    }
+    
+    // Account exists but not a regeneration request
     if (existingAccount) {
       oauthLogger.info(`Account already exists: ${email}`);
       res.send(`
@@ -146,27 +260,34 @@ authRoutes.get('/callback', async (req: Request, res: Response): Promise<void> =
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
             h1 { color: #f59e0b; }
-            code { background: #f3f4f6; padding: 2px 8px; border-radius: 4px; font-size: 14px; }
-            .api-key { background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; word-break: break-all; }
+            .info { background: #e0f2fe; padding: 15px; border-radius: 8px; margin: 20px 0; }
+            .warning { background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; }
             pre { background: #1f2937; color: #e5e7eb; padding: 15px; border-radius: 8px; overflow-x: auto; }
-            .btn { display: inline-block; background: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-top: 20px; }
+            .btn { display: inline-block; background: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-top: 20px; margin-right: 10px; }
             .btn:hover { background: #2563eb; }
+            .btn-danger { background: #ef4444; }
+            .btn-danger:hover { background: #dc2626; }
           </style>
         </head>
         <body>
           <h1>⚠️ Already Registered</h1>
           <p>This Gmail account is already registered.</p>
           <p><strong>Email:</strong> ${email}</p>
-          <div class="api-key">
-            <strong>Your existing API Key:</strong><br>
-            <code>${existingAccount.api_key}</code>
+          <div class="warning">
+            <strong>🔐 API Key:</strong> Your SMTP Password(API Key) was shown only once during initial registration.
+            <p>If you saved it, continue using it for SMTP authentication.</p>
+          </div>
+          <div class="info">
+            <strong>Lost your SMTP Password/API key?</strong>
+            <p>You can regenerate a new one. This will <strong>invalidate your old key</strong>.</p>
+            <a href="/auth/regenerate" class="btn btn-danger">🔄 Regenerate API Key</a>
           </div>
           <h2>SMTP Configuration</h2>
           <pre>
 Host:     localhost (or your server IP)
 Port:     2525
 Username: ${email}
-Password: ${existingAccount.api_key}
+Password: [your saved API key]
           </pre>
           <a href="/" class="btn">← Back to Home</a>
         </body>
@@ -209,14 +330,14 @@ Password: ${existingAccount.api_key}
         <p>Your Gmail account has been connected to the SMTP relay.</p>
         <p><strong>Email:</strong> ${email}</p>
         <div class="api-key">
-          <strong>Your API Key:</strong><br>
+          <strong>Your SMTP Password (API Key):</strong><br>
           <code>${apiKey}</code>
         </div>
         <div class="warning">
           <strong>⚠️ Important:</strong> Save this API key now! It won't be shown again.
         </div>
         <h2>SMTP Configuration</h2>
-        <p>Configure your email client or sequencer with these settings:</p>
+        <p>Configure your email sequencer/email client with these settings:</p>
         <pre>
 Host:     localhost (or your server IP)
 Port:     2525
@@ -235,6 +356,48 @@ npx ts-node scripts/send-test.ts recipient@example.com "Test Subject" "Test Body
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     oauthLogger.error(`Callback error: ${errorMessage}`);
 
+    // Check if it's an expired/reused authorization code (happens on page refresh)
+    const lowerError = errorMessage.toLowerCase();
+    const isCodeExpired = lowerError.includes('invalid_grant') ||
+                          lowerError.includes('code was already redeemed') ||
+                          lowerError.includes('code has expired') ||
+                          lowerError.includes('bad request');
+
+    if (isCodeExpired) {
+      res.status(400).send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Page Expired - SMTP Gmail Relay</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+            h1 { color: #f59e0b; }
+            .info { background: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0; }
+            .success { background: #d1fae5; padding: 15px; border-radius: 8px; margin: 20px 0; }
+            .btn { display: inline-block; background: #3b82f6; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-top: 20px; margin-right: 10px; }
+            .btn:hover { background: #2563eb; }
+            .btn-danger { background: #ef4444; }
+            .btn-danger:hover { background: #dc2626; }
+          </style>
+        </head>
+        <body>
+          <h1>⚠️ Page Expired</h1>
+          <div class="info">
+            <p>This page cannot be refreshed because the authorization code has already been used.</p>
+          </div>
+          <div class="success">
+            <p>If you saw and saved your SMTP Password (API Key), you're all set.</p>
+          </div>
+          <p>If you didn't save your SMTP Password, you can regenerate a new one:</p>
+          <a href="/auth/regenerate" class="btn btn-danger">🔄 Regenerate API Key</a>
+          <a href="/" class="btn">← Back to Home</a>
+        </body>
+        </html>
+      `);
+      return;
+    }
+
+    // Actual error - show error details
     res.status(500).send(`
       <!DOCTYPE html>
       <html>

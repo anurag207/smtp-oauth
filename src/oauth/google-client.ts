@@ -57,16 +57,18 @@ export interface RefreshedTokenResponse {
  * This URL redirects users to Google's consent screen where they
  * can authorize the app to send emails on their behalf.
  *
+ * @param action - The action type: 'register' or 'regenerate'
  * @returns Authorization URL to redirect users to
  */
-export function getAuthorizationUrl(): string {
+export function getAuthorizationUrl(action: 'register' | 'regenerate' = 'register'): string {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline', // Request refresh_token for long-term access
     scope: SCOPES,
     prompt: 'consent', // Always show consent screen to get refresh_token
+    state: action, // Pass action type to callback
   });
 
-  oauthLogger.debug('Generated authorization URL');
+  oauthLogger.debug(`Generated authorization URL for action: ${action}`);
   return url;
 }
 

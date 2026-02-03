@@ -254,6 +254,35 @@ export function updateRefreshToken(
 }
 
 /**
+ * Update API key for an account (for regeneration)
+ *
+ * Security: New API key is hashed with bcrypt before storing
+ *
+ * @param email - Email address of the account
+ * @param apiKey - New API key (plain text, will be hashed)
+ */
+export function updateApiKey(email: string, apiKey: string): void {
+  const db = getDatabase();
+
+  // Hash the new API key
+  const hashedApiKey = bcrypt.hashSync(apiKey, BCRYPT_ROUNDS);
+
+  const stmt = db.prepare(`
+    UPDATE accounts 
+    SET api_key = ?, updated_at = unixepoch()
+    WHERE email = ?
+  `);
+
+  const result = stmt.run(hashedApiKey, email);
+
+  if (result.changes === 0) {
+    throw new Error(`Account not found: ${email}`);
+  }
+
+  dbLogger.info(`Regenerated API key for: ${email}`);
+}
+
+/**
  * Delete an account from the database
  *
  * @param email - Email address of the account to delete

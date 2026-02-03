@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   console.log(`║  OAuth Server:  http://localhost:${config.httpPort}                       ║`);
   console.log('╠══════════════════════════════════════════════════════════════╣');
   console.log('║  1. Register Gmail: http://localhost:3000/auth/register      ║');
-  console.log('║  2. Get API key and configure your email client              ║');
+  console.log('║  2. Get SMTP Credentials (API Key) and configure your sequencer              ║');
   console.log('║  3. Send emails through the relay!                           ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
   console.log('');
