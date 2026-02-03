@@ -1,5 +1,5 @@
 /**
- * OAuth Express Server
+ * OAuth HTTP Server
  *
  * HTTP server for OAuth registration flow.
  * Provides web interface for users to register their Gmail accounts.

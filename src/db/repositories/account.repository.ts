@@ -196,7 +196,7 @@ export function getDecryptedAccessToken(account: Account): string | null {
  * @param accessToken - New access token (plain text, will be encrypted)
  * @param tokenExpiry - Token expiry timestamp (Unix seconds)
  */
-export function updateTokens(
+export function updateAccessToken(
   email: string,
   accessToken: string,
   tokenExpiry: number

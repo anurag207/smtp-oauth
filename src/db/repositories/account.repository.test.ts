@@ -38,7 +38,7 @@ import {
   verifyApiKey,
   getDecryptedRefreshToken,
   getDecryptedAccessToken,
-  updateTokens,
+  updateAccessToken,
   updateRefreshToken,
   updateApiKey,
   deleteAccount,
@@ -262,7 +262,7 @@ describe('Account Repository', () => {
       });
 
       // Update with access token
-      updateTokens('test@example.com', 'my-access-token', Date.now() + 3600);
+      updateAccessToken('test@example.com', 'my-access-token', Date.now() + 3600);
 
       // Re-fetch account to get updated token
       const updatedAccount = getAccountByEmail('test@example.com')!;
@@ -272,7 +272,7 @@ describe('Account Repository', () => {
     });
   });
 
-  describe('updateTokens()', () => {
+  describe('updateAccessToken()', () => {
     it('should update access token and expiry', () => {
       createAccount({
         email: 'test@example.com',
@@ -281,7 +281,7 @@ describe('Account Repository', () => {
       });
 
       const expiry = Math.floor(Date.now() / 1000) + 3600;
-      updateTokens('test@example.com', 'new-access-token', expiry);
+      updateAccessToken('test@example.com', 'new-access-token', expiry);
 
       const account = getAccountByEmail('test@example.com')!;
 
@@ -291,7 +291,7 @@ describe('Account Repository', () => {
 
     it('should throw error when account not found', () => {
       expect(() =>
-        updateTokens('nonexistent@example.com', 'token', 12345)
+        updateAccessToken('nonexistent@example.com', 'token', 12345)
       ).toThrow('Account not found');
     });
   });
