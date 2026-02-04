@@ -5,6 +5,7 @@
  */
 
 import request from 'supertest';
+import { Request, Response } from 'express';
 
 // Mock config
 jest.mock('../config', () => ({
@@ -18,7 +19,7 @@ jest.mock('../config', () => ({
 jest.mock('./routes', () => {
   const express = require('express');
   const router = express.Router();
-  router.get('/register', (_req: any, res: any) => res.redirect('https://google.com'));
+  router.get('/register', (_req: Request, res: Response) => res.redirect('https://google.com'));
   return { authRoutes: router };
 });
 
