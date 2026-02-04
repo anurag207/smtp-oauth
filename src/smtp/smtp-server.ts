@@ -12,8 +12,8 @@ import {
   SMTPServerAuthentication,
 } from 'smtp-server';
 import { simpleParser, ParsedMail, AddressObject } from 'mailparser';
-import { verifyApiKey, getAccountByEmail, Account } from '../db/repositories/account.repository';
-import { sendEmailViaGmail, EmailMessage, SendEmailResult } from '../gmail/client';
+import { verifyApiKey, getAccountByEmail, Account } from '../db/repositories/account-repository';
+import { sendEmailViaGmail, EmailMessage, SendEmailResult } from '../gmail/gmail-client';
 import { smtpLogger } from '../utils/logger';
 
 /**
@@ -366,3 +366,4 @@ export function stopSmtpServer(server: SMTPServer): Promise<void> {
     });
   });
 }
+

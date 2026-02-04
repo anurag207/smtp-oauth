@@ -5,14 +5,14 @@
  * Handles automatic token refresh when access tokens expire.
  */
 
-import { refreshAccessToken, RefreshedTokenResponse } from '../oauth/client';
+import { refreshAccessToken, RefreshedTokenResponse } from '../oauth/google-oauth-client';
 import {
   Account,
   getAccountByEmail,
   updateAccessToken,
   getDecryptedAccessToken,
   getDecryptedRefreshToken,
-} from '../db/repositories/account.repository';
+} from '../db/repositories/account-repository';
 import { gmailLogger } from '../utils/logger';
 import { GMAIL_SEND_API_URL } from '../constants/google-api';
 

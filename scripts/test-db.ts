@@ -6,16 +6,16 @@
  */
 
 import { initializeDatabase, closeDatabase } from '../src/db';
-import { createTables } from '../src/db/accounts.schema';
+import { createTables } from '../src/db/accounts-schema';
 import {
   createAccount,
   getAccountByEmail,
-  getAccountByApiKey,
+  verifyApiKey,
   updateAccessToken,
   deleteAccount,
   getAllAccounts,
   countAccounts,
-} from '../src/db/repositories/account.repository';
+} from '../src/db/repositories/account-repository';
 
 // Test database path (separate from production)
 const TEST_DB_PATH = './data/test-relay.db';
@@ -65,13 +65,13 @@ async function runTests(): Promise<void> {
     console.log('   ❌ Account not found by email\n');
   }
 
-  // Test: Get account by API key
-  console.log('4. Testing getAccountByApiKey()...');
-  const byApiKey = getAccountByApiKey(testApiKey);
+  // Test: Verify API key
+  console.log('4. Testing verifyApiKey()...');
+  const byApiKey = verifyApiKey(testEmail, testApiKey);
   if (byApiKey) {
-    console.log(`   ✅ Found account by API key: ${byApiKey.email}\n`);
+    console.log(`   ✅ API key verified for: ${byApiKey.email}\n`);
   } else {
-    console.log('   ❌ Account not found by API key\n');
+    console.log('   ❌ API key verification failed\n');
   }
 
   // Test: Update tokens

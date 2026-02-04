@@ -10,9 +10,9 @@
 // Config must be imported first to validate environment variables
 import { config } from './config';
 
-import { createSmtpServer, startSmtpServer, stopSmtpServer } from './smtp/server';
+import { createSmtpServer, startSmtpServer, stopSmtpServer } from './smtp/smtp-server';
 import { initializeDatabase, closeDatabase } from './db';
-import { createTables } from './db/accounts.schema';
+import { createTables } from './db/accounts-schema';
 import { createOAuthServer, startOAuthServer } from './oauth/http-server';
 import { serverLogger } from './utils/logger';
 

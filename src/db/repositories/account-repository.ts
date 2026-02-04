@@ -109,24 +109,6 @@ export function getAccountByEmail(email: string): Account | null {
 }
 
 /**
- * Get account by API key (used for SMTP authentication)
- *
- * @deprecated With hashed API keys, use verifyApiKey() instead.
- * This function is kept for backward compatibility with un-hashed keys.
- *
- * @param apiKey - API key to look up
- * @returns Account or null if not found
- */
-export function getAccountByApiKey(apiKey: string): Account | null {
-  const db = getDatabase();
-
-  const stmt = db.prepare('SELECT * FROM accounts WHERE api_key = ?');
-  const row = stmt.get(apiKey) as Account | undefined;
-
-  return row ?? null;
-}
-
-/**
  * Verify API key for an account (for hashed keys)
  *
  * Since API keys are hashed, we can't look them up directly.
