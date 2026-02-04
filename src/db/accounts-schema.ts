@@ -29,7 +29,6 @@ export function createTables(): void {
   `);
 
   // Create index for fast email lookups
-  // Note: api_key index removed - lookups are done by email, then key is verified
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);
   `);

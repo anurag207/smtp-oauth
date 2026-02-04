@@ -429,7 +429,7 @@ npx ts-node scripts/send-test.ts recipient@example.com "Test Subject" "Test Body
 /**
  * GET /auth/status/:email
  *
- * Check if an email is registered (for debugging/admin)
+ * Check if an email is registered (for debugging)
  */
 authRoutes.get('/status/:email', (req: Request, res: Response): void => {
   const email = req.params.email as string;
