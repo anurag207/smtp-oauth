@@ -306,7 +306,7 @@ smtp-to-gmail-oauth-relay/
 │   │   └── google-api.ts    # Google API URLs and scopes
 │   ├── db/                  # Database layer
 │   │   ├── index.ts         # SQLite connection
-│   │   ├── accounts.schema.ts
+│   │   ├── accounts-schema.ts
 │   │   └── repositories/
 │   │       └── account.repository.ts
 │   ├── gmail/               # Gmail API integration

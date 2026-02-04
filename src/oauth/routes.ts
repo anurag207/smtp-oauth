@@ -14,12 +14,12 @@ import {
   getUserEmail,
   GMAIL_SEND_SCOPE,
   revokeToken,
-} from './client';
+} from './google-oauth-client';
 import {
   createAccount,
   getAccountByEmail,
   updateApiKey,
-} from '../db/repositories/account.repository';
+} from '../db/repositories/account-repository';
 import { oauthLogger } from '../utils/logger';
 
 /**

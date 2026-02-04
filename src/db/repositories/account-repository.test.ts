@@ -45,7 +45,7 @@ import {
   accountExists,
   getAllAccounts,
   countAccounts,
-} from './account.repository';
+} from './account-repository';
 
 describe('Account Repository', () => {
   beforeEach(() => {
